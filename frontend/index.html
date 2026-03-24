@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CertChain – Blockchain Certificate Verifier</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/web3/1.10.0/web3.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --black: #0a0a0a; --white: #ffffff; --off-white: #f7f6f3;
+      --light-gray: #efefed; --mid-gray: #c8c6c0; --dark-gray: #6b6860;
+      --green: #1a7a4a; --green-light: #e8f5ee;
+      --red: #b53a2f; --red-light: #fbeae8;
+      --blue: #1e3a5f; --blue-light: #e8eef6;
+      --border: #e4e2dc;
+      --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.06);
+    }
+    body { font-family: 'DM Sans', sans-serif; background: var(--off-white); color: var(--black); min-height: 100vh; font-size: 15px; line-height: 1.6; }
+
+    header { background: var(--white); border-bottom: 1px solid var(--border); padding: 0 48px; height: 64px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo-icon { width: 32px; height: 32px; background: var(--black); border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+    .logo-text { font-family: 'DM Serif Display', serif; font-size: 20px; color: var(--black); }
+    .logo-text span { color: var(--dark-gray); font-style: italic; }
+    #connectionStatus { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; color: var(--dark-gray); background: var(--light-gray); padding: 6px 14px; border-radius: 100px; transition: all 0.3s; }
+    #connectionStatus.connected { background: var(--green-light); color: var(--green); }
+    #connectionStatus.error { background: var(--red-light); color: var(--red); }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: 0.7; }
+
+    main { max-width: 860px; margin: 0 auto; padding: 56px 24px 80px; }
+    .page-title { font-family: 'DM Serif Display', serif; font-size: 40px; letter-spacing: -1px; line-height: 1.15; margin-bottom: 10px; }
+    .page-subtitle { font-size: 16px; color: var(--dark-gray); font-weight: 300; margin-bottom: 48px; }
+
+    .config-card { background: var(--white); border: 1px solid var(--border); border-radius: 16px; padding: 28px 32px; margin-bottom: 24px; box-shadow: var(--shadow); }
+    .card-label { font-size: 11px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--mid-gray); margin-bottom: 16px; }
+    .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .field-group { display: flex; flex-direction: column; gap: 6px; }
+    .field-group.full { grid-column: 1 / -1; }
+    label { font-size: 12px; font-weight: 600; color: var(--dark-gray); letter-spacing: 0.3px; }
+    input[type="text"] { width: 100%; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; font-family: 'DM Mono', monospace; font-size: 12.5px; background: var(--off-white); color: var(--black); transition: border-color 0.2s, box-shadow 0.2s; outline: none; }
+    input[type="text"]:focus { border-color: var(--black); box-shadow: 0 0 0 3px rgba(10,10,10,0.06); background: var(--white); }
+
+    .tabs { display: flex; gap: 2px; background: var(--light-gray); border-radius: 12px; padding: 4px; margin-bottom: 24px; }
+    .tab-btn { flex: 1; padding: 10px 16px; border: none; background: transparent; border-radius: 9px; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500; color: var(--dark-gray); cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .tab-btn.active { background: var(--white); color: var(--black); box-shadow: var(--shadow); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .action-card { background: var(--white); border: 1px solid var(--border); border-radius: 16px; padding: 32px; box-shadow: var(--shadow); }
+    .action-title { font-family: 'DM Serif Display', serif; font-size: 22px; margin-bottom: 6px; }
+    .action-desc { font-size: 14px; color: var(--dark-gray); margin-bottom: 28px; font-weight: 300; }
+
+    .drop-zone { border: 2px dashed var(--border); border-radius: 12px; padding: 40px 24px; text-align: center; cursor: pointer; transition: all 0.25s; background: var(--off-white); position: relative; }
+    .drop-zone:hover, .drop-zone.dragover { border-color: var(--black); background: var(--light-gray); }
+    .drop-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+    .drop-icon { width: 40px; height: 40px; background: var(--light-gray); border-radius: 10px; display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; }
+    .drop-text { font-size: 14px; font-weight: 500; color: var(--black); margin-bottom: 4px; }
+    .drop-subtext { font-size: 12px; color: var(--mid-gray); }
+
+    .hash-box { margin-top: 20px; display: none; }
+    .hash-box.visible { display: block; }
+    .hash-label-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .hash-value { background: var(--off-white); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; font-family: 'DM Mono', monospace; font-size: 11.5px; color: var(--black); word-break: break-all; line-height: 1.8; }
+    .copy-btn { background: none; border: 1.5px solid var(--border); border-radius: 6px; padding: 5px 10px; font-size: 11px; font-weight: 600; color: var(--dark-gray); cursor: pointer; transition: all 0.2s; font-family: 'DM Sans', sans-serif; }
+    .copy-btn:hover { border-color: var(--black); color: var(--black); }
+
+    .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; border-radius: 10px; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; border: none; outline: none; }
+    .btn-primary { background: var(--black); color: var(--white); }
+    .btn-primary:hover { background: #222; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,0,0,0.2); }
+    .btn-primary:disabled { background: var(--mid-gray); cursor: not-allowed; transform: none; box-shadow: none; }
+    .btn-secondary { background: var(--off-white); color: var(--black); border: 1.5px solid var(--border); }
+    .btn-secondary:hover { background: var(--light-gray); }
+    .btn-row { display: flex; gap: 12px; margin-top: 24px; flex-wrap: wrap; }
+
+    .result-box { margin-top: 24px; border-radius: 12px; padding: 20px 24px; display: none; animation: fadeIn 0.35s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    .result-box.visible { display: flex; gap: 16px; align-items: flex-start; }
+    .result-box.success { background: var(--green-light); border: 1px solid #b2dcc4; }
+    .result-box.error { background: var(--red-light); border: 1px solid #f0c4be; }
+    .result-box.info { background: var(--blue-light); border: 1px solid #b8cfe4; }
+    .result-icon { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 18px; }
+    .result-box.success .result-icon { background: #c8ecd6; }
+    .result-box.error .result-icon { background: #f5cfc9; }
+    .result-title { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+    .result-box.success .result-title { color: var(--green); }
+    .result-box.error .result-title { color: var(--red); }
+    .result-box.info .result-title { color: var(--blue); }
+    .result-msg { font-size: 13px; color: var(--dark-gray); line-height: 1.6; }
+
+    .steps-card { background: var(--white); border: 1px solid var(--border); border-radius: 16px; padding: 32px; margin-top: 24px; box-shadow: var(--shadow); }
+    .steps-title { font-family: 'DM Serif Display', serif; font-size: 18px; margin-bottom: 24px; }
+    .step-item { display: flex; gap: 16px; padding-bottom: 28px; position: relative; }
+    .step-item:last-child { padding-bottom: 0; }
+    .step-item:not(:last-child)::before { content: ''; position: absolute; left: 15px; top: 34px; bottom: 0; width: 1.5px; background: var(--border); }
+    .step-num { width: 32px; height: 32px; border-radius: 50%; background: var(--light-gray); border: 1.5px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: var(--dark-gray); flex-shrink: 0; position: relative; z-index: 1; transition: all 0.3s; }
+    .step-item.done .step-num { background: var(--green); border-color: var(--green); color: white; }
+    .step-item.active .step-num { background: var(--black); border-color: var(--black); color: white; }
+    .step-name { font-weight: 600; font-size: 14px; color: var(--black); margin-bottom: 3px; }
+    .step-detail { font-size: 13px; color: var(--dark-gray); }
+    .step-detail code { background: var(--light-gray); padding: 1px 6px; border-radius: 4px; font-family: 'DM Mono', monospace; font-size: 11.5px; }
+
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .tx-log { margin-top: 20px; display: none; }
+    .tx-log.visible { display: block; }
+    .tx-log-title { font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--mid-gray); margin-bottom: 10px; }
+    .tx-log-entry { background: var(--off-white); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-family: 'DM Mono', monospace; font-size: 11px; color: var(--dark-gray); word-break: break-all; line-height: 1.7; }
+    .tx-log-entry strong { color: var(--black); }
+
+    .file-info { display: none; align-items: center; gap: 12px; padding: 12px 16px; background: var(--off-white); border: 1px solid var(--border); border-radius: 8px; margin-top: 16px; }
+    .file-info.visible { display: flex; }
+    .file-info-icon { width: 32px; height: 32px; background: var(--light-gray); border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+    .file-info-name { font-weight: 600; font-size: 13px; }
+    .file-info-size { font-size: 12px; color: var(--dark-gray); }
+
+    @media (max-width: 600px) {
+      header { padding: 0 20px; }
+      main { padding: 32px 16px 60px; }
+      .page-title { font-size: 30px; }
+      .config-grid { grid-template-columns: 1fr; }
+      .action-card { padding: 24px 20px; }
+    }
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="white" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+      </svg>
+    </div>
+    <span class="logo-text">Cert<span>Chain</span></span>
+  </div>
+  <div id="connectionStatus">
+    <div class="status-dot"></div>
+    <span id="statusText">Not connected</span>
+  </div>
+</header>
+
+<main>
+  <h1 class="page-title">Certificate<br>Verification</h1>
+  <p class="page-subtitle">Blockchain-powered authenticity for digital certificates.</p>
+
+  <div class="config-card">
+    <div class="card-label">Configuration</div>
+    <div class="config-grid">
+      <div class="field-group full">
+        <label>Contract Address</label>
+        <input type="text" id="contractAddress" placeholder="0x... paste your deployed contract address from Remix" />
+      </div>
+      <div class="field-group">
+        <label>Ganache RPC URL</label>
+        <input type="text" id="rpcUrl" value="http://127.0.0.1:7545" />
+      </div>
+      <div class="field-group" style="justify-content:flex-end;">
+        <button class="btn btn-primary" onclick="connectBlockchain()" style="width:100%;justify-content:center;margin-top:18px;">
+          Connect to Ganache
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('issue',this)">
+      <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+      Issue Certificate
+    </button>
+    <button class="tab-btn" onclick="switchTab('verify',this)">
+      <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      Verify Certificate
+    </button>
+  </div>
+
+  <!-- ISSUE -->
+  <div class="tab-panel active" id="tab-issue">
+    <div class="action-card">
+      <div class="action-title">Issue a Certificate</div>
+      <div class="action-desc">Upload a certificate file. Its SHA-256 hash will be stored permanently on the blockchain.</div>
+      <div class="drop-zone" id="issueDropZone">
+        <input type="file" id="issueFile" onchange="handleIssueFile(event)" />
+        <div class="drop-icon">
+          <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+        </div>
+        <div class="drop-text">Drop your certificate file here</div>
+        <div class="drop-subtext">Supports .txt, .pdf, or any file type</div>
+      </div>
+      <div class="file-info" id="issueFileInfo">
+        <div class="file-info-icon">
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        </div>
+        <div>
+          <div class="file-info-name" id="issueFileName">—</div>
+          <div class="file-info-size" id="issueFileSize">—</div>
+        </div>
+      </div>
+      <div class="hash-box" id="issueHashBox">
+        <div class="hash-label-row">
+          <label>SHA-256 Hash</label>
+          <button class="copy-btn" onclick="copyHash('issueHash')">Copy</button>
+        </div>
+        <div class="hash-value" id="issueHash">—</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="issueBtn" onclick="issueCertificate()" disabled>Store on Blockchain</button>
+        <button class="btn btn-secondary" onclick="clearIssue()">Clear</button>
+      </div>
+      <div class="result-box" id="issueResult"></div>
+      <div class="tx-log" id="issueTxLog">
+        <div class="tx-log-title">Transaction Details</div>
+        <div class="tx-log-entry" id="issueTxEntry"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VERIFY -->
+  <div class="tab-panel" id="tab-verify">
+    <div class="action-card">
+      <div class="action-title">Verify a Certificate</div>
+      <div class="action-desc">Upload a certificate file to check if its hash exists on the blockchain.</div>
+      <div class="drop-zone" id="verifyDropZone">
+        <input type="file" id="verifyFile" onchange="handleVerifyFile(event)" />
+        <div class="drop-icon">
+          <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+        </div>
+        <div class="drop-text">Drop certificate to verify</div>
+        <div class="drop-subtext">Upload the exact same file that was issued</div>
+      </div>
+      <div class="file-info" id="verifyFileInfo">
+        <div class="file-info-icon">
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        </div>
+        <div>
+          <div class="file-info-name" id="verifyFileName">—</div>
+          <div class="file-info-size" id="verifyFileSize">—</div>
+        </div>
+      </div>
+      <div class="hash-box" id="verifyHashBox">
+        <div class="hash-label-row">
+          <label>SHA-256 Hash</label>
+          <button class="copy-btn" onclick="copyHash('verifyHash')">Copy</button>
+        </div>
+        <div class="hash-value" id="verifyHash">—</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="verifyBtn" onclick="verifyCertificate()" disabled>Verify on Blockchain</button>
+        <button class="btn btn-secondary" onclick="clearVerify()">Clear</button>
+      </div>
+      <div class="result-box" id="verifyResult"></div>
+    </div>
+  </div>
+
+  <!-- STEPS -->
+  <div class="steps-card">
+    <div class="steps-title">How it works</div>
+    <div class="step-item done" id="s1">
+      <div class="step-num" id="s1n">✓</div>
+      <div class="step-content">
+        <div class="step-name">Smart contract deployed</div>
+        <div class="step-detail">Your <code>CertificateVerification.sol</code> is live on Ganache.</div>
+      </div>
+    </div>
+    <div class="step-item" id="s2">
+      <div class="step-num" id="s2n">2</div>
+      <div class="step-content">
+        <div class="step-name">Connect to blockchain</div>
+        <div class="step-detail">Paste your contract address and click <strong>Connect to Ganache</strong>.</div>
+      </div>
+    </div>
+    <div class="step-item" id="s3">
+      <div class="step-num" id="s3n">3</div>
+      <div class="step-content">
+        <div class="step-name">Upload &amp; hash certificate</div>
+        <div class="step-detail">File is hashed locally with <code>SHA-256</code> — nothing leaves your machine.</div>
+      </div>
+    </div>
+    <div class="step-item" id="s4">
+      <div class="step-num" id="s4n">4</div>
+      <div class="step-content">
+        <div class="step-name">Store hash on blockchain</div>
+        <div class="step-detail">Calls <code>addCertificate(hash)</code> — immutably recorded on-chain.</div>
+      </div>
+    </div>
+    <div class="step-item" id="s5">
+      <div class="step-num" id="s5n">5</div>
+      <div class="step-content">
+        <div class="step-name">Verify at any time</div>
+        <div class="step-detail">Upload the same file → calls <code>verifyCertificate(hash)</code> → returns <code>true</code> or <code>false</code>.</div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+  const ABI = [
+    {"inputs":[{"internalType":"string","name":"hash","type":"string"}],"name":"addCertificate","outputs":[],"stateMutability":"nonpayable","type":"function"},
+    {"inputs":[{"internalType":"string","name":"hash","type":"string"}],"name":"verifyCertificate","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},
+    {"inputs":[{"internalType":"string","name":"","type":"string"}],"name":"certificates","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"}
+  ];
+
+  let web3 = null, contract = null, issueHashValue = null, verifyHashValue = null;
+
+  async function connectBlockchain() {
+    const addr = document.getElementById('contractAddress').value.trim();
+    const rpc  = document.getElementById('rpcUrl').value.trim();
+    if (!addr) { showResult('issueResult','error','Missing address','Please paste your contract address from Remix.'); return; }
+    if (!addr.startsWith('0x')) { showResult('issueResult','error','Invalid address','Contract address must start with 0x.'); return; }
+    const s = document.getElementById('connectionStatus'), t = document.getElementById('statusText');
+    s.className = ''; t.textContent = 'Connecting…';
+    try {
+      web3 = new Web3(new Web3.providers.HttpProvider(rpc));
+      await web3.eth.net.isListening();
+      contract = new web3.eth.Contract(ABI, addr);
+      s.className = 'connected'; t.textContent = 'Connected · Ganache';
+      markStep(2,'done'); updateIssueBtn(); updateVerifyBtn();
+    } catch(e) {
+      s.className = 'error'; t.textContent = 'Connection failed';
+      showResult('issueResult','error','Connection failed',`Could not connect: ${e.message}. Make sure Ganache is running on ${rpc}.`);
+    }
+  }
+
+  async function generateHash(file) {
+    const buf = await file.arrayBuffer();
+    const h = await crypto.subtle.digest('SHA-256', buf);
+    return '0x' + Array.from(new Uint8Array(h)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
+
+  async function handleIssueFile(e) {
+    const file = e.target.files[0]; if (!file) return;
+    document.getElementById('issueFileInfo').classList.add('visible');
+    document.getElementById('issueFileName').textContent = file.name;
+    document.getElementById('issueFileSize').textContent = formatSize(file.size);
+    issueHashValue = await generateHash(file);
+    document.getElementById('issueHash').textContent = issueHashValue;
+    document.getElementById('issueHashBox').classList.add('visible');
+    markStep(3,'active'); updateIssueBtn();
+  }
+
+  async function issueCertificate() {
+    if (!contract || !issueHashValue) return;
+    const btn = document.getElementById('issueBtn');
+    btn.innerHTML = '<span class="spinner"></span> Storing…'; btn.disabled = true;
+    try {
+      const accounts = await web3.eth.getAccounts();
+      const tx = await contract.methods.addCertificate(issueHashValue).send({ from: accounts[0] });
+      markStep(4,'done');
+      showResult('issueResult','success','✅ Certificate Issued',`Hash stored on blockchain. Transaction confirmed in block #${tx.blockNumber}.`);
+      document.getElementById('issueTxLog').classList.add('visible');
+      document.getElementById('issueTxEntry').innerHTML =
+        `<strong>Tx Hash:</strong> ${tx.transactionHash}<br><strong>Block:</strong> #${tx.blockNumber}<br><strong>From:</strong> ${accounts[0]}<br><strong>Certificate Hash:</strong> ${issueHashValue}`;
+    } catch(e) { showResult('issueResult','error','Transaction Failed',e.message); }
+    btn.innerHTML = 'Store on Blockchain'; updateIssueBtn();
+  }
+
+  async function handleVerifyFile(e) {
+    const file = e.target.files[0]; if (!file) return;
+    document.getElementById('verifyFileInfo').classList.add('visible');
+    document.getElementById('verifyFileName').textContent = file.name;
+    document.getElementById('verifyFileSize').textContent = formatSize(file.size);
+    verifyHashValue = await generateHash(file);
+    document.getElementById('verifyHash').textContent = verifyHashValue;
+    document.getElementById('verifyHashBox').classList.add('visible');
+    updateVerifyBtn();
+  }
+
+  async function verifyCertificate() {
+    if (!contract || !verifyHashValue) return;
+    const btn = document.getElementById('verifyBtn');
+    btn.innerHTML = '<span class="spinner"></span> Checking…'; btn.disabled = true;
+    try {
+      const result = await contract.methods.verifyCertificate(verifyHashValue).call();
+      if (result) {
+        showResult('verifyResult','success','✅ Certificate is Valid','This certificate exists on the blockchain. It has not been tampered with and was officially issued.');
+        markStep(5,'done');
+      } else {
+        showResult('verifyResult','error','❌ Certificate Not Found','This hash does not exist on the blockchain. The file may be unissued or has been modified.');
+      }
+    } catch(e) { showResult('verifyResult','error','Verification Error',e.message); }
+    btn.innerHTML = 'Verify on Blockchain'; updateVerifyBtn();
+  }
+
+  function switchTab(tab, el) {
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+    el.classList.add('active'); document.getElementById('tab-'+tab).classList.add('active');
+  }
+
+  function showResult(id, type, title, msg) {
+    const el = document.getElementById(id);
+    const icons = {success:'✅', error:'❌', info:'ℹ️'};
+    el.className = `result-box ${type} visible`;
+    el.innerHTML = `<div class="result-icon">${icons[type]||'ℹ️'}</div><div><div class="result-title">${title}</div><div class="result-msg">${msg}</div></div>`;
+  }
+
+  function markStep(num, state) {
+    const el = document.getElementById('s'+num); if (!el) return;
+    el.className = 'step-item '+state;
+    if (state==='done') document.getElementById('s'+num+'n').textContent = '✓';
+  }
+
+  function updateIssueBtn() { document.getElementById('issueBtn').disabled = !(contract && issueHashValue); }
+  function updateVerifyBtn() { document.getElementById('verifyBtn').disabled = !(contract && verifyHashValue); }
+
+  function clearIssue() {
+    issueHashValue = null;
+    document.getElementById('issueFile').value='';
+    document.getElementById('issueHash').textContent='—';
+    document.getElementById('issueHashBox').classList.remove('visible');
+    document.getElementById('issueFileInfo').classList.remove('visible');
+    document.getElementById('issueResult').className='result-box';
+    document.getElementById('issueTxLog').classList.remove('visible');
+    updateIssueBtn();
+  }
+
+  function clearVerify() {
+    verifyHashValue = null;
+    document.getElementById('verifyFile').value='';
+    document.getElementById('verifyHash').textContent='—';
+    document.getElementById('verifyHashBox').classList.remove('visible');
+    document.getElementById('verifyFileInfo').classList.remove('visible');
+    document.getElementById('verifyResult').className='result-box';
+    updateVerifyBtn();
+  }
+
+  function copyHash(id) {
+    navigator.clipboard.writeText(document.getElementById(id).textContent).then(()=>{
+      event.target.textContent='Copied!'; setTimeout(()=>event.target.textContent='Copy',1500);
+    });
+  }
+
+  function formatSize(b) {
+    if (b<1024) return b+' B';
+    if (b<1048576) return (b/1024).toFixed(1)+' KB';
+    return (b/1048576).toFixed(1)+' MB';
+  }
+
+  ['issueDropZone','verifyDropZone'].forEach(id=>{
+    const el = document.getElementById(id);
+    el.addEventListener('dragover',e=>{e.preventDefault();el.classList.add('dragover');});
+    el.addEventListener('dragleave',()=>el.classList.remove('dragover'));
+    el.addEventListener('drop',e=>{
+      e.preventDefault(); el.classList.remove('dragover');
+      const file = e.dataTransfer.files[0]; if (!file) return;
+      const isIssue = id==='issueDropZone';
+      const inputId = isIssue?'issueFile':'verifyFile';
+      const dt = new DataTransfer(); dt.items.add(file);
+      document.getElementById(inputId).files = dt.files;
+      if (isIssue) handleIssueFile({target:{files:[file]}});
+      else handleVerifyFile({target:{files:[file]}});
+    });
+  });
+</script>
+</body>
+</html>
